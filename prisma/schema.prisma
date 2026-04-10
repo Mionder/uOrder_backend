@@ -1,0 +1,148 @@
+// prisma/schema.prisma
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Spiciness {
+  NONE
+  MEDIUM
+  HOT
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  token     String   @unique // Тут буде наш 6-значний код
+  expires   DateTime // Час життя коду (наприклад, 15-30 хв)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model MenuAnalytics {
+  id        String   @id @default(cuid())
+  tenantId  String
+  views     Int      @default(0)
+  date      DateTime @default(now()) // Для графіків по днях
+  
+  @@unique([tenantId, date])
+}
+
+model ItemAnalytics {
+  id        String   @id @default(cuid())
+  menuItemId String
+  clicks    Int      @default(0)
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  name      Json // { "uk": "Суші", "en": "Sushi" }
+  slug      String
+  sortOrder Int        @default(0)
+  isVisible Boolean    @default(true)
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  items     MenuItem[]
+
+  @@unique([tenantId, slug]) // У одного ресторану не може бути двох категорій з однаковим слагом
+  @@index([tenantId])
+}
+
+model MenuVariant {
+  id         String   @id @default(uuid())
+  label      Json     // Назва варіанту (напр. {"uk": "0.5л", "en": "500ml"})
+  price      Float    // Ціна саме за цей варіант
+  
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+}
+
+model MenuItem {
+  id          String   @id @default(uuid())
+  name        Json // { "uk": "Філадельфія", "en": "Philadelphia" }
+  description Json? // Опис страви
+  basePrice   Float?
+  price       Decimal?  @db.Decimal(10, 2)
+  image       String? // URL картинки
+  sortOrder   Int      @default(0)
+  weight      String? // "250г"
+  isActive    Boolean  @default(true)
+  likesCount  Int      @default(0)
+  likes       Like[]   // Зв'язок з таблицею лайків
+  isAvailable Boolean  @default(true)
+  spiciness   Spiciness @default(NONE)
+  allergens   String[]  @default([])
+
+  variants    MenuVariant[]
+
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([categoryId])
+}
+
+model Like {
+  id           String   @id @default(uuid())
+  menuItemId   String
+  menuItem     MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  
+  identifier   String   // Тут зберігаємо або Fingerprint, або UUID з кук
+  ipAddress    String?  // Для додаткового контролю
+  createdAt    DateTime @default(now())
+
+  @@unique([menuItemId, identifier]) // ОДИН ідентифікатор може лайкнути страву лише ОДИН раз
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  slug      String   @unique // 'pizzanew', 'sushiwarsaw'
+  logo      String?
+  qrCodeUrl String?
+  name      Json // {"uk": "Піца Нова", "en": "Pizza New"}
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  views     Int    @default(0)
+
+  languages    String[] @default(["uk"]) // Масив кодів мов: ["en", "pl", "es"]
+  mainColor    String   @default("#000000") // HEX колір бренду
+  description  Json?    // Опис закладу {"uk": "...", "en": "..."}
+  address      Json?    // Адреса {"uk": "вул. Франка, 1", "en": "1 Franko St"}
+  phone        String?  // Номер телефону
+  workingHours Json?    // Час роботи {"uk": "Пн-Пт 09:00-21:00", "en": "Mon-Fri 09:00-21:00"}
+
+  users      User[]
+  categories Category[]
+  items      MenuItem[]
+}
+
+model VerificationCode {
+  id        String   @id @default(uuid())
+  code      String   // Тут зберігаємо 6-значний код
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id       String @id @default(uuid())
+  email    String @unique
+  password String // Hashed
+  role     String @default("ADMIN")
+  verificationCode VerificationCode?
+  isEmailVerified Boolean @default(false)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now())
+}
