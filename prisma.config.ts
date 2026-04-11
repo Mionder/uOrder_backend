@@ -4,7 +4,8 @@ import { defineConfig } from '@prisma/config'; // або за структуро
 export default defineConfig({
   datasource: {
     //url: process.env.DATABASE_URL,
-    url: "postgresql://postgres.wpvvkawgqojdglynjloz:lWInGP1ta7Oi3vJo@aws-1-eu-central-1.pooler.supabase.com:5432/postgres",
+    url: "postgresql://postgres:UdTyXiBIKtcNoQBNIKwrTRCVbCFcEzzo@metro.proxy.rlwy.net:18103/railway"
+    //NEEDED url: "postgresql://postgres.wpvvkawgqojdglynjloz:lWInGP1ta7Oi3vJo@aws-1-eu-central-1.pooler.supabase.com:5432/postgres",
     // "postgresql://postgres.wpvvkawgqojdglynjloz:lWInGP1ta7Oi3vJo@aws-1-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true",
   },
   //
