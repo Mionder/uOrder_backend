@@ -46,7 +46,8 @@ async update(id: string, dto: any) {
       phone: dto.phone, // Нове поле
       workingHours: dto.workingHours, // Нове поле
       isActive: dto.isActive,
-      languages: dto.languages
+      languages: dto.languages,
+      currency: dto.currency,
     },
   });
 }

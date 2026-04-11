@@ -15,6 +15,13 @@ enum Spiciness {
   HOT
 }
 
+enum Currency {
+  USD
+  EUR
+  UAH
+  PLN
+}
+
 model PasswordResetToken {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -111,6 +118,7 @@ model Tenant {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   views     Int    @default(0)
+  currency  Currency @default(UAH)
 
   languages    String[] @default(["uk"]) // Масив кодів мов: ["en", "pl", "es"]
   mainColor    String   @default("#000000") // HEX колір бренду
