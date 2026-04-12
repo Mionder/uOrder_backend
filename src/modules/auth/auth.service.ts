@@ -14,41 +14,61 @@ export class AuthService {
     private mailerService: MailerService,
   ) {}
 
-  async register(dto: RegisterDto) {
-    // 1. Перевіряємо чи slug або email вже зайняті
-    const existingTenant = await this.prisma.tenant.findUnique({ where: { slug: dto.restaurantSlug } });
-    if (existingTenant) throw new ConflictException('Slug already taken');
+async register(dto: RegisterDto) {
+  // 1. Попередня перевірка (поза транзакцією)
+  const existingTenant = await this.prisma.tenant.findUnique({ where: { slug: dto.restaurantSlug } });
+  if (existingTenant) throw new ConflictException('Slug already taken');
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
+  const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // 2. Виконуємо транзакцію
-    return this.prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: {
-          slug: dto.restaurantSlug,
-          name: dto.restaurantName as any,
-        },
-      });
-
-      const user = await tx.user.create({
-        data: {
-          email: dto.email,
-          password: hashedPassword,
-          tenantId: tenant.id,
-          role: 'ADMIN',
-        },
-      });
-
-      try {
-        await this.sendVerificationCode(user.id, user.email, tx);
-      } catch (err) {
-        console.error('Send_email_error', err);
-      }
-      const token = this.generateToken(user);
-
-      return { userId: user.id, tenantId: tenant.id, slug: tenant.slug, token };
+  // 2. Транзакція ТІЛЬКИ для БД
+  const result = await this.prisma.$transaction(async (tx) => {
+    const tenant = await tx.tenant.create({
+      data: {
+        slug: dto.restaurantSlug,
+        name: dto.restaurantName as any,
+      },
     });
+
+    const user = await tx.user.create({
+      data: {
+        email: dto.email,
+        password: hashedPassword,
+        tenantId: tenant.id,
+        role: 'ADMIN',
+      },
+    });
+
+    // Створюємо код у БД всередині транзакції (це швидко)
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await tx.verificationCode.upsert({
+      where: { userId: user.id },
+      update: { code, expiresAt },
+      create: { userId: user.id, code, expiresAt },
+    });
+
+    return { user, tenant, code };
+  });
+
+  // 3. Відправка пошти ПІСЛЯ транзакції
+  // Навіть якщо пошта впаде, юзер вже створений в БД
+  try {
+    await this.mailerService.sendMail({
+      to: result.user.email,
+      subject: 'Ваш код підтвердження uOrder',
+      template: './verification',
+      context: { code: result.code },
+    });
+  } catch (err) {
+    console.error('Email sending failed, but user created:', err);
+    // Тут можна або ігнорувати, або сказати юзеру "Натисніть ресенд"
   }
+
+  const token = this.generateToken(result.user);
+  return { userId: result.user.id, tenantId: result.tenant.id, slug: result.tenant.slug, token };
+}
 
 async sendVerificationCode(userId: string, email: string, prismaClient?: any) {
   // Використовуємо переданий tx або основний this.prisma
