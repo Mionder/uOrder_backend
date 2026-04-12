@@ -39,7 +39,11 @@ export class AuthService {
         },
       });
 
-     // await this.sendVerificationCode(user.id, user.email, tx);
+      try {
+        await this.sendVerificationCode(user.id, user.email, tx);
+      } catch (err) {
+        console.error('Send_email_error', err);
+      }
       const token = this.generateToken(user);
 
       return { userId: user.id, tenantId: tenant.id, slug: tenant.slug, token };
