@@ -35,7 +35,7 @@ export class AuthController {
   @Post('resend-code')
   @UseGuards(JwtAuthGuard)
   async resend(@Request() req) {
-    return this.authService.sendVerificationCode(req.user.id, req.user.email);
+    //return this.authService.sendVerificationCode(req.user.id, req.user.email);
   }
 
   @Post('forgot-password')
