@@ -16,10 +16,10 @@ enum Spiciness {
 }
 
 enum Currency {
-  $
-  €
-  ₴
-  Zl
+  USD
+  EUR
+  UAH
+  PLN
 }
 
 model PasswordResetToken {
