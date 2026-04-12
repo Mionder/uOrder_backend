@@ -4,14 +4,17 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import { JwtService } from '@nestjs/jwt';
-import { MailerService } from '@nestjs-modules/mailer';
+import { Resend } from 'resend';
+import { MailService } from '../mail/mail.service';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService, 
-    private mailerService: MailerService,
+    private mailService: MailService,
   ) {}
 
 async register(dto: RegisterDto) {
@@ -54,140 +57,61 @@ async register(dto: RegisterDto) {
 
   // 3. Відправка пошти ПІСЛЯ транзакції
   // Навіть якщо пошта впаде, юзер вже створений в БД
-  try {
-    await this.mailerService.sendMail({
-      to: result.user.email,
-      subject: 'Ваш код підтвердження uOrder',
-      template: './verification',
-      context: { code: result.code },
-    });
-  } catch (err) {
-    console.error('Email sending failed, but user created:', err);
-    // Тут можна або ігнорувати, або сказати юзеру "Натисніть ресенд"
-  }
+  await this.mailService.sendVerificationCode(result.user.email, result.code);
 
   const token = this.generateToken(result.user);
   return { userId: result.user.id, tenantId: result.tenant.id, slug: result.tenant.slug, token };
 }
 
-async sendVerificationCode(userId: string, email: string, prismaClient?: any) {
-  // Використовуємо переданий tx або основний this.prisma
-  const db = prismaClient || this.prisma;
+async verifyEmail(userId: string, code: string) {
+    const record = await this.prisma.verificationCode.findUnique({ where: { userId } });
 
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    if (!record || record.code !== code) throw new BadRequestException('Невірний код');
+    if (new Date() > record.expiresAt) throw new BadRequestException('Термін дії вичерпано');
 
-  await db.verificationCode.upsert({
-    where: { userId },
-    update: { code, expiresAt },
-    create: { userId, code, expiresAt },
-  });
-
-  // Відправка листа (це не стосується БД, можна лишати так)
-  await this.mailerService.sendMail({
-    to: email,
-    subject: 'Ваш код підтвердження uOrder',
-    template: './verification',
-    context: { code },
-  });
-}
-
-  async verifyEmail(userId: string, code: string) {
-    if (!userId) {
-      throw new BadRequestException('User ID is required');
-    }
-    const record = await this.prisma.verificationCode.findUnique({
-      where: { userId },
-    });
-
-    if (!record || record.code !== code) {
-      throw new BadRequestException('Невірний код');
-    }
-
-    if (new Date() > record.expiresAt) {
-      throw new BadRequestException('Термін дії коду вичерпано');
-    }
-
-    // Маркуємо користувача як верифікованого
     await this.prisma.user.update({
       where: { id: userId },
       data: { isEmailVerified: true },
     });
 
-    // Видаляємо код після успішної перевірки
     await this.prisma.verificationCode.delete({ where: { userId } });
-
-    return { message: 'Email успішно підтверджено' };
+    return { message: 'Email підтверджено' };
   }
 
 async forgotPassword(email: string) {
-  const user = await this.prisma.user.findUnique({ where: { email } });
-  
-  // Безпека: не кажемо прямо, що імейла немає
-  if (!user) return { success: true };
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) return { success: true };
 
-  const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-  const expires = new Date(Date.now() + 15 * 60 * 1000);
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
 
-  // Зберігаємо код у PasswordResetToken
-  await this.prisma.passwordResetToken.upsert({
-    where: { email },
-    update: { token: resetCode, expires },
-    create: { email, token: resetCode, expires },
-  });
-
-  // Використовуємо твій існуючий mailerService
-  await this.mailerService.sendMail({
-    to: email,
-    subject: 'Відновлення пароля uOrder',
-    template: './reset-password', // назва твого нового файлу шаблону
-    context: { 
-      code: resetCode,
-      name: user.email || 'Користувач' // можна додати ім'я в шаблон
-    },
-  });
-
-  return { success: true };
-}
-
-async resetPassword(dto: any) {
-
-  const { email, code, newPassword } = dto;
-
-  const resetEntry = await this.prisma.passwordResetToken.findUnique({
-    where: { email }
-  });
-
-  if (!resetEntry || resetEntry.token !== code) {
-    throw new BadRequestException('Невірний код підтвердження');
-  }
-
-  if (new Date() > resetEntry.expires) {
-    throw new BadRequestException('Термін дії коду вичерпано');
-  }
-
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-  // Оновлюємо пароль та чистимо токен
-  await this.prisma.$transaction([
-    this.prisma.user.update({
+    await this.prisma.passwordResetToken.upsert({
       where: { email },
-      data: { password: hashedPassword }
-    }),
-    this.prisma.passwordResetToken.delete({
-      where: { email }
-    })
-  ]);
+      update: { token: resetCode, expires },
+      create: { email, token: resetCode, expires },
+    });
 
-  // Повертаємо токени, щоб юзер одразу залогінився
-  const user = await this.prisma.user.findUnique({ where: { email } });
+    await this.mailService.sendResetPasswordCode(email, resetCode);
+    return { success: true };
+  }
 
-  if (!user) return;
-    
-    return;
+  async resetPassword(dto: any) {
+    const { email, code, newPassword } = dto;
+    const resetEntry = await this.prisma.passwordResetToken.findUnique({ where: { email } });
 
-  //return this.login(user.email, user.password); // Твій стандартний метод логіну, що видає JWT
-}
+    if (!resetEntry || resetEntry.token !== code) throw new BadRequestException('Невірний код');
+    if (new Date() > resetEntry.expires) throw new BadRequestException('Код прострочено');
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { email }, data: { password: hashedPassword } }),
+      this.prisma.passwordResetToken.delete({ where: { email } })
+    ]);
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    return this.generateToken(user);
+  }
 
 
 
