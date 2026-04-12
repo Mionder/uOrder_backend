@@ -29,7 +29,7 @@ export class MailService {
   private async send(options: { to: string; subject: string; html: string }) {
     try {
       const { data, error } = await this.resend.emails.send({
-        from: 'uOrder <onboarding@resend.dev>',
+        from: 'uOrder <hello@uorder.app>',
         ...options,
       });
       if (error) throw new Error(error.message);
