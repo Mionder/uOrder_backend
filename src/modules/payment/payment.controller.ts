@@ -11,12 +11,13 @@ export class PaymentController {
 
   @Post('subscribe')
   // Тут має бути твій Guard для авторизації, щоб отримати user
-  async subscribe(@Body() body: { plan: any; userId: string; tenantId: string }) {
+  async subscribe(@Body() body: { plan: any; userId: string; tenantId: string, currency: string }) {
     // Викликаємо метод, який ми реально написали в сервісі
     return this.paymentService.createSubscription(
       body.userId,
       body.tenantId,
       body.plan,
+      body.currency,
     );
   }
 

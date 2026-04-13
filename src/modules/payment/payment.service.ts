@@ -13,7 +13,24 @@ export class PaymentService {
   private readonly merchantSecret = process.env.WAYFORPAY_MERCHANT_SECRET;
   private readonly domain = process.env.WAYFORPAY_DOMAIN;
 
-  async createSubscription(userId: string, tenantId: string, plan: PlanType) {
+  async createSubscription(userId: string, tenantId: string, plan: PlanType, currency: string) {
+
+    const basePrices = {
+      BASIC: 15,
+      PRO: 30
+    };
+
+    const priceInUsd = basePrices[plan] || 0;
+
+    // 2. Курси конвертації (можна винести в config або БД)
+    const rates = {
+      UAH: 40,
+      PLN: 4,
+      USD: 1
+    };
+
+    const currentRate = rates[currency] || 40;
+    const finalAmount = priceInUsd * currentRate;
     // Формуємо унікальний ID замовлення, що містить усі дані:
     // SUB_{PLAN}_{TENANT_ID}_{USER_ID}_{TIMESTAMP}
     const orderReference = `SUB_${plan}_${tenantId}_${userId}_${Date.now()}`;
@@ -25,15 +42,15 @@ export class PaymentService {
     // Масив для генерації підпису
     const productName = `uOrder Subscription: ${plan}`;
     const productCount = 1;
-    const productPrice = amount;
+    const productPrice = finalAmount;
 
     const signatureData = [
       this.merchantAccount,
       this.domain,
       orderReference,
       orderDate,
-      amount,
-      'UAH',
+      finalAmount,
+      currency,
       productName,
       productCount,
       productPrice,
@@ -55,7 +72,7 @@ export class PaymentService {
       orderReference,
       orderDate,
       amount,
-      currency: 'UAH',
+      currency,
       productName: [productName],
       productCount: [productCount],
       productPrice: [productPrice],
