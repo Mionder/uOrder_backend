@@ -22,6 +22,12 @@ enum Currency {
   PLN
 }
 
+enum Plan {
+  FREE
+  BASIC
+  PRO
+}
+
 model PasswordResetToken {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -119,6 +125,10 @@ model Tenant {
   createdAt DateTime @default(now())
   views     Int    @default(0)
   currency  Currency @default(UAH)
+  plan               Plan     @default(FREE)
+  subscriptionStatus String   @default("INACTIVE")
+  nextBillingDate    DateTime?
+  lastPaymentDate    DateTime?
 
   languages    String[] @default(["uk"]) // Масив кодів мов: ["en", "pl", "es"]
   mainColor    String   @default("#000000") // HEX колір бренду

@@ -7,9 +7,10 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { MenuModule } from './modules/menu/menu.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { MailModule } from './modules/mail/mail.module';
+import { PaymentModule } from './modules/payment/payment.module';
 
 @Module({
-  imports: [MailModule, AuthModule, PrismaModule, CategoriesModule, MenuModule, TenantsModule],
+  imports: [MailModule, AuthModule, PrismaModule, CategoriesModule, MenuModule, TenantsModule, PaymentModule],
   controllers: [AppController],
   providers: [AppService],
 })
