@@ -30,26 +30,25 @@ export class PaymentService {
     };
 
     const currentRate = rates[currency] || 40;
-    const finalAmount = priceInUsd * currentRate;
+    const amount = priceInUsd * currentRate;
     // Формуємо унікальний ID замовлення, що містить усі дані:
     // SUB_{PLAN}_{TENANT_ID}_{USER_ID}_{TIMESTAMP}
     const orderReference = `SUB_${plan}_${tenantId}_${userId}_${Date.now()}`;
     
     // Ціни (можна винести в константи)
-    const amount = plan === PlanType.PRO ? 500 : 250;
     const orderDate = Math.floor(Date.now() / 1000);
 
     // Масив для генерації підпису
     const productName = `uOrder Subscription: ${plan}`;
     const productCount = 1;
-    const productPrice = finalAmount;
+    const productPrice = amount;
 
     const signatureData = [
       this.merchantAccount,
       this.domain,
       orderReference,
       orderDate,
-      finalAmount,
+      amount,
       currency,
       productName,
       productCount,
