@@ -164,3 +164,16 @@ model User {
 
   createdAt DateTime @default(now())
 }
+
+model PaymentHistory {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  amount      Float
+  plan        Plan     // Переконайся, що enum Plan у тебе вже є
+  externalId  String?  // ID транзакції від WayForPay
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+}
