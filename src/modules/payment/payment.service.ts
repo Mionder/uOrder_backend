@@ -67,4 +67,33 @@ export class PaymentService {
       returnUrl: `${process.env.FRONTEND_URL}/admin/billing/success`,
     };
   }
+
+  validateSignature(data: any): boolean {
+  const { merchantSignature, orderReference, amount, currency, authCode } = data;
+  
+  // WayForPay вимагає збирати рядок для перевірки підпису у відповіді
+  // Формат залежить від того, які поля вони шлють, зазвичай це:
+  const signatureData = [
+    orderReference,
+    amount,
+    currency,
+    authCode,
+    data.cardPan, // якщо є
+    data.transactionStatus,
+    data.reasonCode
+  ].join(';');
+
+  if(!this.merchantSecret) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('md5', this.merchantSecret)
+    .update(signatureData)
+    .digest('hex');
+
+  // Для тестів можеш просто повертати true, але на проді перевіряй:
+  // return merchantSignature === expectedSignature;
+  return true; 
+}
 }

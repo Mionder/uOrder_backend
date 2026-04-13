@@ -1,80 +1,57 @@
-// payment.controller.ts
-import { Controller, Post, Body, BadRequestException, HttpCode } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { PaymentService } from './payment.service';
-import { CreatePaymentDto } from './create-payment.dto';
-import { FondyCallbackDto } from './create-payment.dto';
+import { PrismaService } from 'src/core/prisma/prisma.service'; // Перевір шлях до PrismaService
 
-@Controller('payments')
+@Controller('v1/payments')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly prisma: PrismaService, // ДОДАЛИ ЦЕ
+  ) {}
 
-@Post('callback')
-async handleCallback(@Body() data: any) {
-  const { orderReference, transactionStatus, merchantSignature } = data;
-
-  // 1. ВАЛІДАЦІЯ ПІДПИСУ (обов'язково для безпеки)
-  // WayForPay шле свій підпис, ми маємо його перевірити, щоб ніхто не "накрутив" підписку
-  // (Логіку валідації підпису краще винести в окремий метод сервісу)
-
-  if (transactionStatus === 'Approved') {
-    // Розбираємо наш хитрий orderReference
-    // Нагадаю формат: SUB_{PLAN}_{TENANT_ID}_{USER_ID}_{TIMESTAMP}
-    const [prefix, plan, tenantId, userId] = orderReference.split('_');
-
-    if (prefix === 'SUB') {
-      await this.prisma.$transaction([
-        // Оновлюємо тариф ресторану
-        this.prisma.tenant.update({
-          where: { id: tenantId },
-          data: { 
-            plan: plan as any,
-            subscriptionStatus: 'ACTIVE',
-            lastPaymentDate: new Date(),
-            nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          }
-        }),
-        // Можна також залогувати платіж в окрему таблицю для історії
-        this.prisma.paymentHistory.create({
-          data: {
-            tenantId,
-            userId,
-            amount: data.amount,
-            plan: plan as any,
-            externalId: data.transactionId
-          }
-        })
-      ]);
-    }
-  }
-
-  // Обов'язкова відповідь для WayForPay
-  return { response: 'accept' };
-}
-
-  @Post('create')
-  async createPayment(@Body() createPaymentDto: CreatePaymentDto) {
-    return this.paymentService.createPaymentLink(
-      createPaymentDto.orderId,
-      createPaymentDto.amount,
-      createPaymentDto.description,
+  @Post('subscribe')
+  // Тут має бути твій Guard для авторизації, щоб отримати user
+  async subscribe(@Body() body: { plan: any; userId: string; tenantId: string }) {
+    // Викликаємо метод, який ми реально написали в сервісі
+    return this.paymentService.createSubscription(
+      body.userId,
+      body.tenantId,
+      body.plan,
     );
   }
 
-  @Post('webhook')
-  @HttpCode(200) // Fondy очікує 200 OK
-  async handleWebhook(@Body() callbackDto: FondyCallbackDto) {
-    // 1. Перевіряємо підпис, щоб ніхто не підробив статус
-    const isValid = this.paymentService.validateWebhook(callbackDto);
-    if (!isValid) {
-      throw new BadRequestException('Invalid signature');
+  @Post('callback')
+  async handleCallback(@Body() data: any) {
+    // Валідуємо підпис (метод додамо в сервіс нижче)
+    const isValid = this.paymentService.validateSignature(data);
+    if (!isValid) return { response: 'error', message: 'Invalid signature' };
+
+    if (data.transactionStatus === 'Approved') {
+      const [prefix, plan, tenantId, userId] = data.orderReference.split('_');
+
+      if (prefix === 'SUB') {
+        await this.prisma.$transaction([
+          this.prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+              plan: plan as any,
+              subscriptionStatus: 'ACTIVE',
+              nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            },
+          }),
+          this.prisma.paymentHistory.create({
+            data: {
+              tenantId,
+              userId,
+              amount: Number(data.amount),
+              plan: plan as any,
+              externalId: data.transactionId,
+            },
+          }),
+        ]);
+      }
     }
 
-    // 2. Оновлюємо статус в БД (тут ти викликаєш свій OrdersService)
-    if (callbackDto.order_status === 'approved') {
-      console.log(`Order ${callbackDto.order_id} PAID SUCCESSFULLY`);
-      // updateOrderStatus(callbackDto.order_id, 'PAID')
-    }
-
-    return { status: 'ok' };
+    return { response: 'accept' };
   }
 }
